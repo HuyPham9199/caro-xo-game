@@ -534,7 +534,9 @@ function renderPlayers(){
       const iMeBusy=!!S.gameId; // bản thân đang trong trận
       const canInv=!busy&&!iMeBusy&&S.mode==='online';
       const avH=p.photo?`<img src="${esc(p.photo)}" alt="">`:esc(p.name[0].toUpperCase());
-      d.innerHTML=`<div class="pavt">${avH}</div><div class="pinfo"><div class="pname">${esc(p.name)}</div><div class="pstat">${busy?'🎮 Đang chơi':'● Sẵn sàng'}</div></div>${canInv?`<button class="invbtn" onclick="sendInv('${esc(p.uid)}','${esc(p.name)}')">Mời</button>`:''}`;
+      const dotColor=busy?'var(--o)':'var(--green)';
+      const statTxt=busy?'Đang trong trận':'Sẵn sàng';
+      d.innerHTML=`<div class="pavt">${avH}</div><div class="pinfo"><div class="pname">${esc(p.name)}</div><div class="pstat"><span style="color:${dotColor};font-size:.8rem">●</span> ${statTxt}</div></div>${canInv?`<button class="invbtn" onclick="sendInv('${esc(p.uid)}','${esc(p.name)}')">Mời</button>`:''}`;
       listEl.appendChild(d);
     });
   }
@@ -573,6 +575,11 @@ async function sendInv(toUid,toName){
 }
 
 function showInvite(inv){
+  // Đang trong trận → tự động từ chối ngay
+  if(S.gameId){
+    if(db)db.collection('invites').doc(inv.id).update({status:'declined'}).catch(()=>{});
+    return;
+  }
   S.pendingInv=inv;
   $('inv-ttl').textContent='🎮 Lời mời chơi!';
   $('inv-dsc').textContent=`${inv.fromName} mời bạn chơi Caro ${inv.size}×${inv.size}!`;
