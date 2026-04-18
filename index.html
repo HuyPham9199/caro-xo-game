@@ -344,6 +344,18 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   </div>
 </div>
 
+<div id="m-rematch" class="moverlay" style="display:none">
+  <div class="mbox">
+    <div class="mico">🔄</div>
+    <h2>Đấu lại?</h2>
+    <p id="rematch-desc">Đối thủ muốn chơi ván nữa!</p>
+    <div class="mbtns">
+      <button class="btn btn-grn" id="btn-rematch-yes">✓ Đồng ý</button>
+      <button class="btn btn-red" id="btn-rematch-no">✗ Từ chối</button>
+    </div>
+  </div>
+</div>
+
 <div id="waiting"><div class="wbox"><div class="spin"></div><h3>Đang chờ đối thủ...</h3><p>Mời người chơi từ danh sách</p><button class="btn btn-out btn-sm" id="btn-canwait" style="margin-top:4px">Hủy</button></div></div>
 <!-- MOBILE DRAWER: online players -->
 <div id="drawer-overlay" onclick="closeDrawer()"></div>
@@ -646,6 +658,7 @@ async function waitForGame(invId){
 
 let gameUnsub=null;
 let _dcTimer=null;
+let _rematchHandled=null;
 
 function resetDCTimer(){
   clearTimeout(_dcTimer);
@@ -671,7 +684,8 @@ function joinRoom(gid){
       }
       S.board=[...d.board];S.cur=d.cur;S.isMyTurn=d.cur===S.mySymbol;
       S.over=false;
-      hideM('m-result');
+      _rematchHandled=null;
+      hideM('m-result');hideM('m-rematch');
       renderBoard();updTurn();
       resetDCTimer();
     } else if(d.status==='finished'&&!S.over){
@@ -685,6 +699,25 @@ function joinRoom(gid){
         updScore();
         showResult(w===S.mySymbol?'win':'lose',d.names?d.names[w]:'');
       }else showResult('draw');
+    }
+    // Xử lý yêu cầu đấu lại
+    if(S.user&&d.rematchReq){
+      const req=d.rematchReq;
+      const key=req.from+'_'+req.status;
+      if(key!==_rematchHandled){
+        _rematchHandled=key;
+        if(req.status==='pending'&&req.from!==S.user.uid){
+          // Nhận được yêu cầu → hiện modal
+          $('rematch-desc').textContent='Đối thủ muốn đấu ván nữa!';
+          showM('m-rematch');
+        } else if(req.status==='accepted'&&req.from===S.user.uid){
+          // Đối thủ đồng ý → bên gửi thực hiện rematch
+          executeRematch();
+        } else if(req.status==='declined'&&req.from===S.user.uid){
+          toast('Đối thủ không đồng ý đấu lại','e',4000);
+          setTimeout(goMenu,2500);
+        }
+      }
     }
   });
 }
@@ -1184,20 +1217,38 @@ function showResult(type,who){
 $('btn-ng').onclick=()=>{S.scores={X:0,O:0};updScore();newGame()};
 $('btn-menu').onclick=goMenu;
 $('btn-again').onclick=async()=>{
-  hideM('m-result');
-  if(S.mode==='online') await onlineRematch();
-  else newGame();
+  if(S.mode==='online'){
+    hideM('m-result');
+    await sendRematchRequest();
+  }else{hideM('m-result');newGame();}
+};
+$('btn-rematch-yes').onclick=async()=>{
+  hideM('m-rematch');
+  if(!db||!S.gameId)return;
+  toast('Ván mới sắp bắt đầu...','i',4000);
+  await db.collection('games').doc(S.gameId).update({'rematchReq.status':'accepted'}).catch(()=>{});
+};
+$('btn-rematch-no').onclick=async()=>{
+  hideM('m-rematch');
+  if(db&&S.gameId)await db.collection('games').doc(S.gameId).update({'rematchReq.status':'declined'}).catch(()=>{});
+  goMenu();
 };
 $('btn-rmenu').onclick=()=>{hideM('m-result');goMenu()};
 
-async function onlineRematch(){
+async function sendRematchRequest(){
   if(!db||!S.gameId){goMenu();return}
-  // Đếm ngược 3 giây
+  await db.collection('games').doc(S.gameId).update({
+    rematchReq:{from:S.user.uid,status:'pending'}
+  }).catch(()=>{});
+  toast('Đã gửi yêu cầu đấu lại, chờ đối thủ...','i',6000);
+}
+
+async function executeRematch(){
+  if(!db||!S.gameId)return;
   for(let i=3;i>=1;i--){
     toast(`Ván mới bắt đầu sau ${i}...`,'i',1100);
     await new Promise(r=>setTimeout(r,1000));
   }
-  // Đọc game hiện tại để lấy players map rồi hoán đổi X/O
   const snap=await db.collection('games').doc(S.gameId).get();
   const d=snap.data();
   if(!d){goMenu();return}
@@ -1206,9 +1257,9 @@ async function onlineRematch(){
   await db.collection('games').doc(S.gameId).update({
     board:Array(S.size*S.size).fill(null),
     cur:'X',status:'playing',winner:null,
-    players:newPlayers,names:newNames
+    players:newPlayers,names:newNames,
+    rematchReq:null
   });
-  // joinRoom listener tự cập nhật S.mySymbol từ d.players
   joinRoom(S.gameId);
   listenChat(S.gameId);
 }
@@ -1216,6 +1267,10 @@ async function onlineRematch(){
 function goMenu(){
   if(gameUnsub){gameUnsub();gameUnsub=null;}
   if(chatUnsub){chatUnsub();chatUnsub=null;}
+  // Xóa rematch request nếu còn tồn tại
+  if(db&&S.gameId)db.collection('games').doc(S.gameId).update({rematchReq:null}).catch(()=>{});
+  hideM('m-rematch');
+  _rematchHandled=null;
   closeChat();
   S.over=false;S.board=[];S.gameId=null;
   S.unsubs.forEach(u=>u&&u());S.unsubs=[];
