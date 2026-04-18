@@ -479,6 +479,10 @@ async function regPresence(){
   window.addEventListener('beforeunload',()=>ref.delete().catch(()=>{}));
   setInterval(()=>ref.update({ts:firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{}),25000);
 }
+async function setPresenceStatus(status){
+  if(!fbOk||!db||!S.user)return;
+  await db.collection('online').doc(S.user.uid).update({status}).catch(()=>{});
+}
 
 function listenPlayers(){
   if(!fbOk||!db)return;
@@ -527,7 +531,8 @@ function renderPlayers(){
     S.players.forEach(p=>{
       const d=document.createElement('div');d.className='pitem';
       const busy=p.status==='playing';
-      const canInv=!busy&&S.mode==='online';
+      const iMeBusy=!!S.gameId; // bản thân đang trong trận
+      const canInv=!busy&&!iMeBusy&&S.mode==='online';
       const avH=p.photo?`<img src="${esc(p.photo)}" alt="">`:esc(p.name[0].toUpperCase());
       d.innerHTML=`<div class="pavt">${avH}</div><div class="pinfo"><div class="pname">${esc(p.name)}</div><div class="pstat">${busy?'🎮 Đang chơi':'● Sẵn sàng'}</div></div>${canInv?`<button class="invbtn" onclick="sendInv('${esc(p.uid)}','${esc(p.name)}')">Mời</button>`:''}`;
       listEl.appendChild(d);
@@ -550,6 +555,7 @@ function closeDrawer(){
 async function sendInv(toUid,toName){
   if(!fbOk||!db||!S.user)return;
   if(S.mode!=='online'){toast('Chọn chế độ Online trước!','e');return}
+  if(S.gameId){toast('Bạn đang trong một trận, hãy kết thúc trước!','e');return}
   // Rate limiting: tối đa 1 lời mời/người/8 giây
   const key=`inv_${toUid}`;
   const last=+localStorage.getItem(key)||0;
@@ -730,6 +736,7 @@ function goGame(){
   else if(S.mode==='local'){$('nm-x').textContent='Người 1';$('nm-o').textContent='Người 2'}
   else{$('nm-x').textContent=S.mySymbol==='X'?uname():'Đối thủ';$('nm-o').textContent=S.mySymbol==='O'?uname():'Đối thủ'}
   $('ocnt').textContent=S.players.length;
+  setPresenceStatus('playing');
   renderPlayers();
   closeChat();updChatUI();
   show('s-game');
@@ -1187,6 +1194,7 @@ function goMenu(){
   closeChat();
   S.over=false;S.board=[];S.gameId=null;
   S.unsubs.forEach(u=>u&&u());S.unsubs=[];
+  setPresenceStatus('idle');
   if(fbOk&&S.user){listenPlayers();listenInvites()}
   show('s-mode');
 }
