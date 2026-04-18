@@ -663,6 +663,12 @@ function joinRoom(gid){
   gameUnsub=db.collection('games').doc(gid).onSnapshot(snap=>{
     const d=snap.data();if(!d)return;
     if(d.status==='playing'){
+      // Đồng bộ symbol từ Firestore (quan trọng khi đấu lại đổi X/O)
+      if(S.user&&d.players){
+        S.mySymbol=d.players.X===S.user.uid?'X':'O';
+        $('nm-x').textContent=d.names?d.names.X:'X';
+        $('nm-o').textContent=d.names?d.names.O:'O';
+      }
       S.board=[...d.board];S.cur=d.cur;S.isMyTurn=d.cur===S.mySymbol;
       S.over=false;
       hideM('m-result');
@@ -674,8 +680,11 @@ function joinRoom(gid){
       S.over=true;
       renderBoard();
       const w=d.winner;
-      if(w)showResult(w===S.mySymbol?'win':'lose',d.names?d.names[w]:'');
-      else showResult('draw');
+      if(w){
+        S.scores[w]=(S.scores[w]||0)+1;
+        updScore();
+        showResult(w===S.mySymbol?'win':'lose',d.names?d.names[w]:'');
+      }else showResult('draw');
     }
   });
 }
@@ -1183,15 +1192,24 @@ $('btn-rmenu').onclick=()=>{hideM('m-result');goMenu()};
 
 async function onlineRematch(){
   if(!db||!S.gameId){goMenu();return}
-  // Đổi ký hiệu cho công bằng
-  S.mySymbol=S.mySymbol==='X'?'O':'X';
-  S.over=false;
+  // Đếm ngược 3 giây
+  for(let i=3;i>=1;i--){
+    toast(`Ván mới bắt đầu sau ${i}...`,'i',1100);
+    await new Promise(r=>setTimeout(r,1000));
+  }
+  // Đọc game hiện tại để lấy players map rồi hoán đổi X/O
+  const snap=await db.collection('games').doc(S.gameId).get();
+  const d=snap.data();
+  if(!d){goMenu();return}
+  const newPlayers={X:d.players.O,O:d.players.X};
+  const newNames={X:d.names?.O||'O',O:d.names?.X||'X'};
   await db.collection('games').doc(S.gameId).update({
     board:Array(S.size*S.size).fill(null),
-    cur:'X',status:'playing',winner:null
+    cur:'X',status:'playing',winner:null,
+    players:newPlayers,names:newNames
   });
-  S.isMyTurn=S.mySymbol==='X';
-  joinRoom(S.gameId); // re-subscribe
+  // joinRoom listener tự cập nhật S.mySymbol từ d.players
+  joinRoom(S.gameId);
   listenChat(S.gameId);
 }
 
