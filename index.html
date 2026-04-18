@@ -212,7 +212,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   </div>
   <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center">
     <button class="btn btn-pri" id="btn-start" style="min-width:200px;font-size:1.05rem;padding:15px 36px">🚀 Bắt Đầu</button>
-    <button class="btn btn-out btn-sm" id="btn-logout-mode" style="padding:13px 20px">⏏ Đăng xuất</button>
+    <button class="btn btn-out btn-sm" id="btn-back-login" style="padding:13px 20px">← Quay lại</button>
+    <button class="btn btn-out btn-sm" id="btn-logout-mode" style="padding:13px 20px;display:none">⏏ Đăng xuất</button>
   </div>
 </div>
 
@@ -370,6 +371,10 @@ function guestLogin(){
 
 function afterLogin(){
   updateUserPanel();
+  // Khách: hiện nút "Quay lại", ẩn "Đăng xuất"
+  // Đã đăng nhập: ẩn "Quay lại", hiện "Đăng xuất"
+  $('btn-back-login').style.display = S.guest ? '' : 'none';
+  $('btn-logout-mode').style.display = S.guest ? 'none' : '';
   show('s-mode');
   if(fbOk&&S.user){regPresence();listenPlayers();listenInvites()}
 }
@@ -937,6 +942,7 @@ async function logout(){
 
 $('btn-logout').onclick=()=>{ if(confirm('Bạn muốn đăng xuất?')) logout(); };
 $('btn-logout-mode').onclick=()=>{ if(confirm('Bạn muốn đăng xuất?')) logout(); };
+$('btn-back-login').onclick=()=>{ S.user=null;S.guest=false;S.guestName='';show('s-login'); };
 
 // Firebase auth state
 if(fbOk&&auth){
