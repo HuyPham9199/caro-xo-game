@@ -493,7 +493,17 @@ function listenInvites(){
   if(!fbOk||!db||!S.user)return;
   const u=db.collection('invites').where('toUid','==',S.user.uid).where('status','==','pending').onSnapshot(snap=>{
     snap.docChanges().forEach(ch=>{
-      if(ch.type==='added'){const d={...ch.doc.data(),id:ch.doc.id};showInvite(d)}
+      if(ch.type==='added'){
+        const d={...ch.doc.data(),id:ch.doc.id};showInvite(d);
+      } else if(ch.type==='removed'){
+        // Lời mời bị hủy vì người gửi đã ghép với người khác
+        if(S.pendingInv&&S.pendingInv.id===ch.doc.id){
+          hideM('m-invite');
+          const d=ch.doc.data();
+          toast(`${d.fromName||'Người chơi'} đã ghép trận với người khác`,'i',4000);
+          S.pendingInv=null;
+        }
+      }
     });
   });
   S.unsubs.push(u);
@@ -576,6 +586,15 @@ $('btn-accept').onclick=async()=>{
     ts:firebase.firestore.FieldValue.serverTimestamp()
   });
   await db.collection('invites').doc(inv.id).update({status:'accepted',gameId:ref.id});
+  // Tự động từ chối tất cả lời mời còn lại từ cùng người gửi
+  try{
+    const others=await db.collection('invites').where('fromUid','==',inv.fromUid).where('status','==','pending').get();
+    if(!others.empty){
+      const batch=db.batch();
+      others.docs.forEach(d=>{if(d.id!==inv.id)batch.update(d.ref,{status:'declined'})});
+      await batch.commit();
+    }
+  }catch(e){}
   S.gameId=ref.id;S.mySymbol='O';S.size=inv.size;S.mode='online';
   $('waiting').classList.remove('on');
   goGame();joinRoom(ref.id);listenChat(ref.id);updChatUI();
@@ -1127,6 +1146,14 @@ function showResult(type,who){
   $('r-ico').textContent=c.ico;
   $('r-ttl').textContent=c.ttl;
   $('r-dsc').textContent=c.dsc;
+  // Nút khác nhau theo chế độ
+  if(S.mode==='online'){
+    $('btn-again').innerHTML='🔄 Đấu lại';
+    $('btn-rmenu').innerHTML='🚪 Thoát ra';
+  }else{
+    $('btn-again').innerHTML='🔄 Chơi lại';
+    $('btn-rmenu').innerHTML='← Menu';
+  }
   showM('m-result');
 }
 
