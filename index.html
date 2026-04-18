@@ -278,21 +278,20 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 <script>
 // ── FIREBASE ──────────────────────────────────────────────────
 const FB_CFG = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyC67E6W_4Hqm0dfY_iUO0hA4ZxGsmUezEQ",
+  authDomain: "tic-tac-toe-aff6f.firebaseapp.com",
+  projectId: "tic-tac-toe-aff6f",
+  storageBucket: "tic-tac-toe-aff6f.firebasestorage.app",
+  messagingSenderId: "747052162880",
+  appId: "1:747052162880:web:7af772ded44ba7fd4d24a5",
+  measurementId: "G-65S068R198"
 };
 let fbOk = false, db = null, auth = null;
 try {
-  if (FB_CFG.apiKey && FB_CFG.apiKey !== 'YOUR_API_KEY') {
-    firebase.initializeApp(FB_CFG);
-    auth = firebase.auth();
-    db = firebase.firestore();
-    fbOk = true;
-  }
+  firebase.initializeApp(FB_CFG);
+  auth = firebase.auth();
+  db = firebase.firestore();
+  fbOk = true;
 } catch(e) { console.warn('Firebase disabled:', e.message); }
 
 // ── STATE ─────────────────────────────────────────────────────
