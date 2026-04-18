@@ -219,7 +219,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
     <div class="sb-logo">CARO X·O</div>
     <div class="ubar">
       <div class="uavt" id="sb-avt">?</div>
-      <div><div class="uname" id="sb-name">Khách</div><div class="ubadge">● Online</div></div>
+      <div style="flex:1;min-width:0"><div class="uname" id="sb-name">Khách</div><div class="ubadge">● Online</div></div>
+      <button id="btn-logout" title="Đăng xuất" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1.1rem;padding:2px 4px;border-radius:6px;transition:all .2s;flex-shrink:0" onmouseover="this.style.color='var(--o)'" onmouseout="this.style.color='var(--muted)'">⏏</button>
     </div>
     <div class="scores">
       <div class="sp act" id="sp-x"><div class="ssym x">X</div><div class="sname" id="nm-x">Bạn</div><div class="sval" id="sc-x">0</div></div>
@@ -898,6 +899,23 @@ function goMenu(){
   if(fbOk&&S.user){listenPlayers();listenInvites()}
   show('s-mode');
 }
+
+async function logout(){
+  S.unsubs.forEach(u=>u&&u());S.unsubs=[];
+  // Remove presence
+  if(fbOk&&db&&S.user){
+    await db.collection('online').doc(S.user.uid).delete().catch(()=>{});
+  }
+  if(fbOk&&auth&&S.user) await auth.signOut().catch(()=>{});
+  S.user=null;S.guest=false;S.guestName='';
+  S.board=[];S.over=false;S.scores={X:0,O:0};S.players=[];
+  show('s-login');
+  toast('Đã đăng xuất','s');
+}
+
+$('btn-logout').onclick=()=>{
+  if(confirm('Bạn muốn đăng xuất?')) logout();
+};
 
 // Firebase auth state
 if(fbOk&&auth){
