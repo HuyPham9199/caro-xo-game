@@ -153,12 +153,29 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .spin{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--x);border-radius:50%;animation:sp .75s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 
+/* MOBILE DRAWER */
+#drawer-btn{display:none;position:fixed;bottom:24px;right:20px;z-index:80;width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--x),#0099bb);border:none;color:#fff;font-size:1.4rem;cursor:pointer;box-shadow:0 4px 20px rgba(0,212,255,.4);align-items:center;justify-content:center;transition:all .2s}
+#drawer-btn:hover{transform:scale(1.1)}
+#drawer-btn .ocnt-fab{position:absolute;top:-4px;right:-4px;background:var(--o);color:#fff;border-radius:10px;padding:1px 6px;font-size:.65rem;font-weight:700;min-width:18px;text-align:center}
+#drawer{position:fixed;top:0;right:-320px;width:300px;height:100%;background:rgba(10,10,26,.97);border-left:1px solid var(--border);backdrop-filter:blur(24px);z-index:150;display:flex;flex-direction:column;padding:24px 16px;gap:16px;transition:right .3s cubic-bezier(.4,0,.2,1);box-shadow:-8px 0 32px rgba(0,0,0,.5)}
+#drawer.open{right:0}
+#drawer-overlay{display:none;position:fixed;inset:0;z-index:140;background:rgba(0,0,0,.5);backdrop-filter:blur(2px)}
+#drawer-overlay.on{display:block}
+#drawer h3{font-size:1rem;font-weight:800;display:flex;align-items:center;justify-content:space-between}
+#drawer-close{background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:2px 6px;border-radius:6px;transition:color .2s}
+#drawer-close:hover{color:var(--text)}
+#drawer .olist{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+
 /* MOBILE */
 @media(max-width:720px){
   #s-game{flex-direction:column}
   .sidebar{width:100%;flex-direction:row;flex-wrap:wrap;padding:10px;gap:8px;border-right:none;border-bottom:1px solid var(--border);max-height:none}
   .opanel{display:none}
   .scores{font-size:.9rem}
+  #drawer-btn{display:flex}
+  .gmain{padding:12px 8px;gap:10px}
+  #board.b15 .cell{width:24px;height:24px}
+  #board.b3 .cell{width:90px;height:90px}
 }
 </style>
 </head>
@@ -277,6 +294,21 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 
 <!-- WAITING -->
 <div id="waiting"><div class="wbox"><div class="spin"></div><h3>Đang chờ đối thủ...</h3><p>Mời người chơi từ danh sách bên trái</p><button class="btn btn-out btn-sm" id="btn-canwait" style="margin-top:4px">Hủy</button></div></div>
+
+<!-- MOBILE DRAWER: online players -->
+<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="drawer">
+  <h3>
+    <span>👥 Người Online <span class="ocnt" id="drawer-cnt">0</span></span>
+    <button id="drawer-close" onclick="closeDrawer()">✕</button>
+  </h3>
+  <div style="color:var(--muted);font-size:.78rem">Bấm <b style="color:var(--x)">Mời</b> để thách đấu</div>
+  <div class="olist" id="drawer-list"><div style="color:var(--muted);font-size:.78rem;text-align:center;padding:20px">Chưa có ai online</div></div>
+</div>
+<!-- FAB button -->
+<button id="drawer-btn" onclick="openDrawer()">
+  👥<span class="ocnt-fab" id="fab-cnt" style="display:none">0</span>
+</button>
 
 <div id="toasts"></div>
 
@@ -418,19 +450,41 @@ function listenInvites(){
 }
 
 function renderPlayers(){
-  const list=$('olist'),cnt=$('ocnt');
-  cnt.textContent=S.players.length;
-  if(!S.user){list.innerHTML='<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:16px">Đăng nhập để xem người chơi online</div>';return}
-  if(!S.players.length){list.innerHTML='<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:16px">Chưa có ai online</div>';return}
-  list.innerHTML='';
-  S.players.forEach(p=>{
-    const d=document.createElement('div');d.className='pitem';
-    const busy=p.status==='playing';
-    const canInv=!busy&&S.mode==='online';
-    const avH=p.photo?`<img src="${esc(p.photo)}" alt="">`:esc(p.name[0].toUpperCase());
-    d.innerHTML=`<div class="pavt">${avH}</div><div class="pinfo"><div class="pname">${esc(p.name)}</div><div class="pstat">${busy?'🎮 Đang chơi':'● Sẵn sàng'}</div></div>${canInv?`<button class="invbtn" onclick="sendInv('${esc(p.uid)}','${esc(p.name)}')">Mời</button>`:''}`;
-    list.appendChild(d);
-  });
+  const n=S.players.length;
+  // Cập nhật tất cả badge đếm
+  ['ocnt','drawer-cnt'].forEach(id=>$(id).textContent=n);
+  // FAB badge
+  const fab=$('fab-cnt');
+  if(fab){fab.textContent=n;fab.style.display=n>0?'':'none'}
+
+  const noUserHTML='<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:16px">Đăng nhập để xem người chơi online</div>';
+  const emptyHTML='<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:16px">Chưa có ai online</div>';
+
+  function buildList(listEl){
+    if(!S.user){listEl.innerHTML=noUserHTML;return}
+    if(!n){listEl.innerHTML=emptyHTML;return}
+    listEl.innerHTML='';
+    S.players.forEach(p=>{
+      const d=document.createElement('div');d.className='pitem';
+      const busy=p.status==='playing';
+      const canInv=!busy&&S.mode==='online';
+      const avH=p.photo?`<img src="${esc(p.photo)}" alt="">`:esc(p.name[0].toUpperCase());
+      d.innerHTML=`<div class="pavt">${avH}</div><div class="pinfo"><div class="pname">${esc(p.name)}</div><div class="pstat">${busy?'🎮 Đang chơi':'● Sẵn sàng'}</div></div>${canInv?`<button class="invbtn" onclick="sendInv('${esc(p.uid)}','${esc(p.name)}')">Mời</button>`:''}`;
+      listEl.appendChild(d);
+    });
+  }
+
+  buildList($('olist'));        // sidebar (desktop)
+  buildList($('drawer-list')); // drawer (mobile)
+}
+
+function openDrawer(){
+  $('drawer').classList.add('open');
+  $('drawer-overlay').classList.add('on');
+}
+function closeDrawer(){
+  $('drawer').classList.remove('open');
+  $('drawer-overlay').classList.remove('on');
 }
 
 async function sendInv(toUid,toName){
