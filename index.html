@@ -191,7 +191,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 #drawer-btn{display:none;position:fixed;bottom:24px;right:20px;z-index:80;width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--x),#0099bb);border:none;color:#fff;font-size:1.4rem;cursor:pointer;box-shadow:0 4px 20px rgba(0,212,255,.4);align-items:center;justify-content:center;transition:all .2s}
 #drawer-btn:hover{transform:scale(1.1)}
 #drawer-btn .ocnt-fab{position:absolute;top:-4px;right:-4px;background:var(--o);color:#fff;border-radius:10px;padding:1px 6px;font-size:.65rem;font-weight:700;min-width:18px;text-align:center}
-#drawer{position:fixed;top:0;right:-320px;width:300px;height:100%;background:rgba(10,10,26,.97);border-left:1px solid var(--border);backdrop-filter:blur(24px);z-index:150;display:flex;flex-direction:column;padding:24px 16px;gap:16px;transition:right .3s cubic-bezier(.4,0,.2,1);box-shadow:-8px 0 32px rgba(0,0,0,.5)}
+#drawer{position:fixed;top:0;right:-320px;width:300px;height:100%;background:#0c0c20;border-left:1px solid var(--border);z-index:150;display:flex;flex-direction:column;padding:24px 16px;gap:16px;transition:right .3s cubic-bezier(.4,0,.2,1);box-shadow:-8px 0 32px rgba(0,0,0,.6);will-change:right}
 #drawer.open{right:0}
 #drawer-overlay{display:none;position:fixed;inset:0;z-index:140;background:rgba(0,0,0,.5);backdrop-filter:blur(2px)}
 #drawer-overlay.on{display:block}
@@ -344,7 +344,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   </div>
 </div>
 
-<!-- WAITING -->/div><h3>Đang chờ đối thủ...</h3><p>Mời người chơi từ danh sách</p><button class="btn btn-out btn-sm" id="btn-canwait" style="margin-top:4px">Hủy</button></div></div>
+<div><h3>Đang chờ đối thủ...</h3><p>Mời người chơi từ danh sách</p><button class="btn btn-out btn-sm" id="btn-canwait" style="margin-top:4px">Hủy</button></div></div>
 
 <div id="waiting"><div class="wbox"><div class="spin"><
 <!-- MOBILE DRAWER: online players -->
@@ -897,9 +897,12 @@ function aiHard15(){
   if(S.size===3)return mm3(S.board,6,'O');
   const win=fwb('O');if(win!==null)return win;
   const blk=fwb('X');if(blk!==null)return blk;
+  // Create or block H4/O4 (one move from winning)
+  const o4=findThreatDelta('O',TS.H4*0.4);if(o4!==-1)return o4;
+  const bo4=findThreatDelta('X',TS.H4*0.4);if(bo4!==-1)return bo4;
   const empty=S.board.map((v,i)=>v===null?i:-1).filter(i=>i>=0);
   if(S.board.every(c=>c===null)){const m=Math.floor(S.size/2);return m*S.size+m;}
-  const cands=getCands(empty,2,18);
+  const cands=getCands(empty,2,20);
   return pickBest(cands,'O',1);
 }
 
@@ -907,20 +910,38 @@ function aiExpert15(){
   if(S.size===3)return mm3(S.board,9,'O');
   const win=fwb('O');if(win!==null)return win;
   const blk=fwb('X');if(blk!==null)return blk;
-  // Tạo open-4 hoặc chặn open-4 của đối thủ
-  const o4=findThreatMove('O',TS.O4);if(o4!==-1)return o4;
-  const bo4=findThreatMove('X',TS.O4);if(bo4!==-1)return bo4;
+  const o4=findThreatDelta('O',TS.H4*0.4);if(o4!==-1)return o4;
+  const bo4=findThreatDelta('X',TS.H4*0.4);if(bo4!==-1)return bo4;
+  // Fork: create/block double-threat
+  const fork=findFork('O');if(fork!==-1)return fork;
+  const bfork=findFork('X');if(bfork!==-1)return bfork;
   const empty=S.board.map((v,i)=>v===null?i:-1).filter(i=>i>=0);
   if(S.board.every(c=>c===null)){const m=Math.floor(S.size/2);return m*S.size+m;}
   const cands=getCands(empty,3,15);
   return pickBest(cands,'O',2);
 }
 
-function findThreatMove(p,minScore){
+function findThreatDelta(p,minDelta){
   const empty=S.board.map((v,i)=>v===null?i:-1).filter(i=>i>=0);
-  for(const i of empty){
+  const base=evalLines(S.board,S.size,p);
+  const cands=getCands(empty,2,30);
+  for(const i of cands){
     const t=[...S.board];t[i]=p;
-    if(evalLines(t,S.size,p)>=minScore)return i;
+    if(evalLines(t,S.size,p)-base>=minDelta)return i;
+  }
+  return -1;
+}
+function findFork(p){
+  const empty=S.board.map((v,i)=>v===null?i:-1).filter(i=>i>=0);
+  const cands=getCands(empty,2,20);
+  for(const i of cands){
+    const t=[...S.board];t[i]=p;
+    const em2=getCands2(t,t.map((v,j)=>v===null?j:-1).filter(j=>j>=0),2,18);
+    let wins=0;
+    for(const j of em2){
+      const t2=[...t];t2[j]=p;
+      if(checkResult(t2,S.size).winner===p){wins++;if(wins>=2)return i;}
+    }
   }
   return -1;
 }
@@ -996,39 +1017,41 @@ function evalLines(board,sz,p){
 function scoreSeg(vals,p,opp){
   let score=0;
   const n=vals.length;
-  for(let start=0;start<=n-5;start++){
-    let cnt=0,hasOpp=false;
-    for(let k=0;k<5;k++){
-      const v=vals[start+k];
-      if(v===opp){hasOpp=true;break;}
-      if(v===p)cnt++;
-    }
-    if(hasOpp||cnt===0)continue;
-    const bef=start>0?vals[start-1]:opp;   // wall = treated as blocked
-    const aft=start+5<n?vals[start+5]:opp;
-    const openL=bef===null,openR=aft===null;
-    const opens=(openL?1:0)+(openR?1:0);
-    if(opens===0&&cnt<5)continue;
-    switch(cnt){
-      case 5:return TS.WIN;
-      case 4:score+=opens===2?TS.O4:TS.H4;break;
-      case 3:score+=opens===2?TS.O3:(opens===1?TS.H3:0);break;
-      case 2:score+=opens===2?TS.O2:(opens===1?TS.H2:0);break;
-      case 1:score+=opens===2?2:0;break;
+  // Pass 1: score consecutive runs of p
+  let i=0;
+  while(i<n){
+    if(vals[i]!==p){i++;continue;}
+    const rs=i;
+    while(i<n&&vals[i]===p)i++;
+    const len=i-rs;
+    if(len>=5)return TS.WIN;
+    const lb=rs===0||vals[rs-1]===opp;
+    const rb=i>=n||vals[i]===opp;
+    const op=(lb?0:1)+(rb?0:1);
+    if(!op)continue;
+    switch(len){
+      case 4:score+=op===2?TS.O4:TS.H4;break;
+      case 3:score+=op===2?TS.O3:(op===1?TS.H3:0);break;
+      case 2:score+=op===2?TS.O2:(op===1?TS.H2:0);break;
+      case 1:score+=op===2?2:0;break;
     }
   }
-  // Bonus: broken patterns XX_X / X_XX (chuỗi bị gián đoạn 1 ô)
-  for(let i=0;i<=n-5;i++){
-    const seg=vals.slice(i,i+5);
+  // Pass 2: broken patterns in window-of-5 (X_XX, XX_X, X_X_X)
+  for(let j=0;j<=n-5;j++){
+    const seg=vals.slice(j,j+5);
     if(seg.includes(opp))continue;
     const cnt=seg.filter(v=>v===p).length;
-    const emp=seg.filter(v=>v===null).length;
-    if(cnt===3&&emp===2){
-      // Open broken 3 (e.g. p_pp_ or _pp_p)
-      const bef=i>0?vals[i-1]:opp;
-      const aft=i+5<n?vals[i+5]:opp;
-      if(bef===null||aft===null) score+=TS.BR3;
-    }
+    if(cnt<3)continue;
+    // skip if already consecutive (scored in pass 1)
+    let first=-1,last=-1;
+    for(let k=0;k<5;k++)if(seg[k]===p){if(first<0)first=k;last=k;}
+    if(last-first+1===cnt)continue;
+    const bef=j>0?vals[j-1]:opp;
+    const aft=j+5<n?vals[j+5]:opp;
+    const op=(bef===null?1:0)+(aft===null?1:0);
+    if(!op)continue;
+    if(cnt===4)score+=TS.H4*0.8;
+    else if(cnt===3)score+=op===2?TS.BR3:TS.BR3*0.4;
   }
   return score;
 }
