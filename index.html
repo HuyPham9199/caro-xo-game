@@ -121,7 +121,10 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 @media(max-width:700px){#board.b3 .cell{width:85px;height:85px}#board.b15 .cell{width:26px;height:26px}}
 .cell:hover:not(.taken){background:rgba(255,255,255,.07)}
 .cell.taken{cursor:default}
-.cell.win{background:rgba(255,215,0,.13)!important}
+.cell.last-move{animation:lmfade 2s ease forwards}
+@keyframes lmfade{0%{background:rgba(255,255,255,.28)}100%{background:rgba(255,255,255,.06)}}
+.cell.win{animation:wpulse .7s ease-in-out infinite alternate}
+@keyframes wpulse{from{background:rgba(255,215,0,.1)}to{background:rgba(255,215,0,.38)}}
 .cmark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;animation:ma .28s cubic-bezier(.34,1.56,.64,1) forwards;opacity:0;transform:scale(0)}
 @keyframes ma{to{opacity:1;transform:scale(1)}}
 .cmark svg{display:block}
@@ -399,7 +402,7 @@ const S = {
   size: 3, mode: 'bot', diff: 'normal',
   board: [], cur: 'X', over: false,
   scores: {X:0, O:0},
-  mySymbol: 'X', isMyTurn: true,
+  mySymbol: 'X', isMyTurn: true, lastMove: null,
   gameId: null, pendingInv: null,
   unsubs: [], players: []
 };
@@ -682,6 +685,7 @@ function joinRoom(gid){
         $('nm-x').textContent=d.names?d.names.X:'X';
         $('nm-o').textContent=d.names?d.names.O:'O';
       }
+      S.lastMove=d.lastMove??null;
       S.board=[...d.board];S.cur=d.cur;S.isMyTurn=d.cur===S.mySymbol;
       S.over=false;
       _rematchHandled=null;
@@ -690,6 +694,7 @@ function joinRoom(gid){
       resetDCTimer();
     } else if(d.status==='finished'&&!S.over){
       clearTimeout(_dcTimer);
+      S.lastMove=d.lastMove??null;
       S.board=[...d.board];S.cur=d.cur;S.isMyTurn=false;
       S.over=true;
       renderBoard();
@@ -697,8 +702,9 @@ function joinRoom(gid){
       if(w){
         S.scores[w]=(S.scores[w]||0)+1;
         updScore();
-        showResult(w===S.mySymbol?'win':'lose',d.names?d.names[w]:'');
-      }else showResult('draw');
+        if(d.winCells&&d.winCells.length)hlWin(d.winCells);
+        setTimeout(()=>showResult(w===S.mySymbol?'win':'lose',d.names?d.names[w]:''),3000);
+      }else setTimeout(()=>showResult('draw'),3000);
     }
     // Xử lý yêu cầu đấu lại
     if(S.user&&d.rematchReq){
@@ -734,10 +740,10 @@ async function onlineMove(idx){
       if(d.cur!==S.mySymbol)throw new Error('not_turn');
       if(d.board[idx]!==null)throw new Error('occupied');
       const nb=[...d.board];nb[idx]=S.mySymbol;
-      const {winner,isDraw}=checkResult(nb,S.size);
+      const {winner,isDraw,winCells}=checkResult(nb,S.size);
       const np=S.mySymbol==='X'?'O':'X';
-      const upd={board:nb,cur:np,lastMoveAt:firebase.firestore.FieldValue.serverTimestamp()};
-      if(winner)upd.status='finished',upd.winner=winner;
+      const upd={board:nb,cur:np,lastMove:idx,lastMoveAt:firebase.firestore.FieldValue.serverTimestamp()};
+      if(winner)upd.status='finished',upd.winner=winner,upd.winCells=winCells;
       else if(isDraw)upd.status='finished',upd.winner=null;
       tx.update(ref,upd);
     });
@@ -793,7 +799,7 @@ function goGame(){
 
 function newGame(){
   S.board=Array(S.size*S.size).fill(null);
-  S.cur='X';S.over=false;
+  S.cur='X';S.over=false;S.lastMove=null;
   S.isMyTurn=S.mySymbol==='X'||S.mode!=='online';
   hideM('m-result');
   renderBoard(true);updTurn();
@@ -811,13 +817,16 @@ function renderBoard(force=false){
     el.innerHTML='';
     S.board.forEach((v,i)=>{
       const cell=document.createElement('div');
-      cell.className='cell'+(v?' taken':'');
+      cell.className='cell'+(v?' taken':'')+(i===S.lastMove?' last-move':'');
       if(v){const m=document.createElement('div');m.className=`cmark ${v==='X'?'xm':'om'}`;m.innerHTML=markSVG(v,S.size);cell.appendChild(m);}
       cell.onclick=()=>cellClick(i);
       el.appendChild(cell);
     });
   }else{
     const cells=el.querySelectorAll('.cell');
+    // Xóa last-move cũ, thêm vào ô mới
+    cells.forEach(c=>c.classList.remove('last-move'));
+    if(S.lastMove!==null&&S.lastMove!==undefined)cells[S.lastMove]?.classList.add('last-move');
     S.board.forEach((v,i)=>{
       if(v&&v!==_prevBoard[i]){
         cells[i].classList.add('taken');
@@ -849,15 +858,16 @@ function cellClick(i){
 function doMove(i,p){
   if(S.board[i]||S.over)return;
   S.board[i]=p;
+  S.lastMove=i;
   renderBoard();
   const {winner,winCells,isDraw}=checkResult(S.board,S.size);
   if(winner){
     S.over=true;
     hlWin(winCells);
-    setTimeout(()=>{S.scores[winner]++;updScore();showResult(winner===S.mySymbol?'win':S.mode==='local'?`p_${winner}`:'lose',winner);},600);
+    setTimeout(()=>{S.scores[winner]++;updScore();showResult(winner===S.mySymbol?'win':S.mode==='local'?`p_${winner}`:'lose',winner);},3000);
     return;
   }
-  if(isDraw){S.over=true;setTimeout(()=>showResult('draw'),400);return}
+  if(isDraw){S.over=true;setTimeout(()=>showResult('draw'),3000);return}
   S.cur=p==='X'?'O':'X';
   updTurn();
   if(S.mode==='bot'&&S.cur!==S.mySymbol)trigBot();
